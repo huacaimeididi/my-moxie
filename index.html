@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>第八单元智能默写系统</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f9ff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px; margin: 0;
+            touch-action: none;
+        }
+        .card {
+            background: white; border-radius: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            padding: 20px; width: 95%; max-width: 600px;
+            text-align: center; box-sizing: border-box;
+        }
+        .nav-tabs {
+            display: flex; justify-content: space-around; margin-bottom: 20px;
+            border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;
+        }
+        .tab-btn {
+            background: none; color: #64748b; font-size: 18px; font-weight: bold;
+            padding: 5px 15px; border: none; cursor: pointer;
+        }
+        .tab-btn.active { color: #0ea5e9; border-bottom: 3px solid #0ea5e9; }
+        .pinyin { font-size: 36px; color: #0284c7; font-weight: bold; margin: 10px 0; }
+        .canvas-container {
+            display: flex; justify-content: center; gap: 10px; margin: 20px 0; flex-wrap: wrap;
+        }
+        .tianzhige-canvas {
+            border: 3px solid #e11d48; border-radius: 8px; background-color: #fff;
+            background-image: 
+                linear-gradient(to bottom, transparent 49%, rgba(225, 29, 72, 0.2) 49%, rgba(225, 29, 72, 0.2) 51%, transparent 51%),
+                linear-gradient(to right, transparent 49%, rgba(225, 29, 72, 0.2) 49%, rgba(225, 29, 72, 0.4) 51%, transparent 51%);
+            background-size: 100% 100%; touch-action: none;
+        }
+        button {
+            background-color: #0ea5e9; color: white; border: none;
+            padding: 12px 24px; font-size: 18px; border-radius: 8px; cursor: pointer; margin: 5px;
+        }
+        .btn-success { background-color: #16a34a; }
+        .btn-error { background-color: #dc2626; }
+        .btn-clear { background-color: #64748b; }
+        .score { font-size: 18px; color: #64748b; margin-bottom: 10px; }
+        .review-list { text-align: left; margin-top: 20px; max-height: 300px; overflow-y: auto; }
+        .review-item { 
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px; border-bottom: 1px solid #e2e8f0;
+        }
+        .badge { background: #fee2e2; color: #ef4444; padding: 2px 8px; border-radius: 12px; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <div class="nav-tabs">
+            <button class="tab-btn active" id="tab-moxie" onclick="switchMode('moxie')">✍️ 开始默写</button>
+            <button class="tab-btn" id="tab-review" onclick="switchMode('review')">😈 错字仓库</button>
+        </div>
+
+        <div id="moxie-view">
+            <div class="score">进度: <span id="progress">0/0</span></div>
+            <div class="pinyin" id="pinyin-display">-</div>
+            <button onclick="speakCurrentWord()">🎵 听声音</button>
+            <button class="btn-clear" onclick="clearCanvases()">🧹 擦除</button>
+            <div class="canvas-container" id="canvas-container"></div>
+            <button id="next-btn" onclick="nextWord()">写好了，下一题</button>
+        </div>
+
+        <div id="pigai-view" style="display: none;">
+            <h3>🧐 家长统一批改时间</h3>
+            <p>请对照孩子在Pad上的手写字与正确答案进行批改：</p>
+            <div class="pinyin" id="pigai-pinyin"></div>
+            <div style="font-size: 48px; color: #e11d48; font-weight: bold; margin: 10px;" id="pigai-answer"></div>
+            <div>
+                <button class="btn-success" onclick="judge(true)">✅ 写对了</button>
+                <button class="btn-error" onclick="judge(false)">❌ 写错了</button>
+            </div>
+            <div id="pigai-canvas-display" class="canvas-container"></div>
+        </div>
+
+        <div id="review-view" style="display: none;">
+            <h3>😈 易错字能量站</h3>
+            <p style="font-size:14px; color:#64748b;">经常错的字会在这里反复出现，只错一次的字出现频率会减少。</p>
+            <button class="btn-success" style="width:100%;" onclick="startReviewMode()">🚀 开启错字专项复习</button>
+            <div class="review-list" id="review-list-container"></div>
+        </div>
+    </div>
+
+<script>
+    // 第八单元完整词库 
+    const originalWordList = [
+        { pinyin: "shè jiàn", hanzi: "射箭" }, { pinyin: "lún huàn", hanzi: "轮换" },
+        { pinyin: "là gōng", hanzi: "拉弓" }, { pinyin: "yán rè", hanzi: "炎热" },
+        { pinyin: "róng huà", hanzi: "熔化" }, { pinyin: "rén lèi", hanzi: "人类" },
+        { pinyin: "kāi shǐ", hanzi: "开始" }, { pinyin: "guāng míng", hanzi: "光明" },
+        { pinyin: "zhí rì", hanzi: "值日" }, { pinyin: "jué xīn", hanzi: "决心" },
+        { pinyin: "huān chàng", hanzi: "欢唱" }, { pinyin: "chuán shuō", hanzi: "传说" },
+        { pinyin: "shǒu lǐng", hanzi: "首领" }, { pinyin: "bù xíng", hanzi: "步行" },
+        { pinyin: "hū rán", hanzi: "忽然" }, { pinyin: "qǐ fā", hanzi: "启发" },
+        { pinyin: "bān yùn", hanzi: "搬运" }, { pinyin: "hào zhào", hanzi: "号召" },
+        { pinyin: "mín zhòng", hanzi: "民众" }, { pinyin: "zì yóu", hanzi: "自由" },
+        { pinyin: "dào lǐ", hanzi: "道理" }, { pinyin: "gēn běn", hanzi: "根本" },
+        { pinyin: "guǒ rán", hanzi: "果然" }, { pinyin: "tí gōng", hanzi: "提供" },
+        { pinyin: "biàn lì", hanzi: "便利" }, { pinyin: "wù jiàn", hanzi: "物件" },
+        { pinyin: "chuàng zào", hanzi: "创造" }, { pinyin: "cǎo mào", hanzi: "草帽" },
+        { pinyin: "àn zhào", hanzi: "按照" }, { pinyin: "shè xiǎng", hanzi: "设想" },
+        { pinyin: "cái liào", hanzi: "材料" }, { pinyin: "dài tì", hanzi: "代替" },
+        { pinyin: "xiāng hù wǎng lái", hanzi: "相互往来" }, { pinyin: "hóng shuǐ", hanzi: "洪水" },
+        { pinyin: "zāi nàn", hanzi: "灾难" }, { pinyin: "shī bài", hanzi: "失败" },
+        { pinyin: "jiào xùn", hanzi: "教训" }, { pinyin: "shū dǎo", hanzi: "疏导" },
+        { pinyin: "nǔ lì", hanzi: "努力" }, { pinyin: "qū gǎn", hanzi: "驱赶" },
+        { pinyin: "huī fù", hanzi: "恢复" }, { pinyin: "tòng kǔ", hanzi: "痛苦" },
+        { pinyin: "bǎi xìng", hanzi: "百姓" }, { pinyin: "bì xū", hanzi: "必须" },
+        { pinyin: "fǎn ér", hanzi: "反而" }, { pinyin: "réng rán", hanzi: "仍然" },
+        { pinyin: "zhì fú", hanzi: "制服" }, { pinyin: "jì xù", hanzi: "继续" },
+        { pinyin: "cǎi yòng", hanzi: "采用" }, { pinyin: "bēn bō", hanzi: "奔波" },
+        { pinyin: "dài lǐng", hanzi: "带领" }, { pinyin: "nóng yè", hanzi: "农业" },
+        { pinyin: "yú gōu", hanzi: "渔沟" }, { pinyin: "tiě chǎn", hanzi: "铁铲" },
+        { pinyin: "chéng zi", hanzi: "橙子" }, { pinyin: "shì zi", hanzi: "柿子" },
+        { pinyin: "yuán tóu", hanzi: "源头" }, { pinyin: "zhǎng cháo", hanzi: "涨潮" },
+        { pinyin: "huǒ jù", hanzi: "火炬" }, { pinyin: "càn làn", hanzi: "灿烂" },
+        { pinyin: "dǎ kuǎ", hanzi: "打垮" }, { pinyin: "lì kè", hanzi: "立刻" },
+        { pinyin: "yí shùn jiān", hanzi: "一瞬间" }, { pinyin: "yì zhǎ yǎn", hanzi: "一眨眼" },
+        { pinyin: "màn tūn tūn", hanzi: "慢吞吞" }, { pinyin: "màn yōu yōu", hanzi: "慢悠悠" },
+        { pinyin: "fān shān yuè lǐng", hanzi: "翻山越岭" }, { pinyin: "bó bó shēng jī", hanzi: "勃勃生机" },
+        { pinyin: "ān jū lè yè", hanzi: "安居乐业" }
+    ];
+
+    let wordList = []; 
+    let currentIndex = 0;
+    let savedCanvasesData = []; // 保存孩子写的所有画作数据
+    let pigaiIndex = 0;
+    let isReviewMode = false;
+
+    // 从系统的本地存储中读取历史错题本 
+    let errorStorage = JSON.parse(localStorage.getItem('moxie_errors')) || {};
+
+    function switchMode(mode) {
+        document.getElementById('tab-moxie').classList.toggle('active', mode === 'moxie');
+        document.getElementById('tab-review').classList.toggle('active', mode === 'review');
+        
+        document.getElementById('moxie-view').style.display = mode === 'moxie' ? 'block' : 'none';
+        document.getElementById('pigai-view').style.display = 'none';
+        document.getElementById('review-view').style.display = mode === 'review' ? 'block' : 'none';
+
+        if(mode === 'review') renderErrorList();
+    }
+
+    function initGame(list, reviewFlag = false) {
+        wordList = [...list];
+        currentIndex = 0;
+        savedCanvasesData = [];
+        isReviewMode = reviewFlag;
+        switchMode('moxie');
+        loadWord();
+    }
+
+    let currentCanvases = [];
+    let currentCtxs = [];
+
+    function loadWord() {
+        if(currentIndex >= wordList.length) {
+            // 全部默写完了，进入家长批改环节！
+            startPigaiMode();
+            return;
+        }
+        document.getElementById('progress').innerText = `${currentIndex + 1}/${wordList.length}`;
+        const word = wordList[currentIndex];
+        document.getElementById('pinyin-display').innerText = word.pinyin;
+        
+        const container = document.getElementById('canvas-container');
+        container.innerHTML = "";
+        currentCanvases = []; currentCtxs = [];
+
+        const boxSize = word.hanzi.length > 3 ? 80 : 120;
+        for(let i = 0; i < word.hanzi.length; i++) {
+            const canvas = document.createElement('canvas');
+            canvas.width = boxSize; canvas.height = boxSize;
+            canvas.className = "tianzhige-canvas";
+            container.appendChild(canvas);
+            const ctx = canvas.getContext('2d');
+            currentCanvases.push(canvas);
+            currentCtxs.push(ctx);
+            setupDrawing(canvas, ctx);
+        }
+        speakCurrentWord();
+    }
+
+    function setupDrawing(canvas, ctx) {
+        let drawing = false; ctx.lineWidth = 4; ctx.lineCap = "round"; ctx.strokeStyle = "#1e293b";
+        function startDraw(e) { drawing = true; draw(e); }
+        function endDraw() { drawing = false; ctx.beginPath(); }
+        function draw(e) {
+            if(!drawing) return; e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            let clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            let clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            ctx.lineTo(clientX - rect.left, clientY - rect.top);
+            ctx.stroke(); ctx.beginPath(); ctx.moveTo(clientX - rect.left, clientY - rect.top);
+        }
+        canvas.addEventListener('mousedown', startDraw); canvas.addEventListener('mouseup', endDraw); canvas.addEventListener('mousemove', draw);
+        canvas.addEventListener('touchstart', startDraw); canvas.addEventListener('touchend', endDraw); canvas.addEventListener('touchmove', draw);
+    }
+
+    function clearCanvases() {
+        currentCtxs.forEach((ctx, i) => ctx.clearRect(0, 0, currentCanvases[i].width, currentCanvases[i].height));
+    }
+
+    function speakCurrentWord() {
+        if(!wordList[currentIndex]) return;
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(wordList[currentIndex].hanzi);
+        utterance.lang = 'zh-CN'; utterance.rate = 0.75;
+        window.speechSynthesis.speak(utterance);
+    }
+
+    function nextWord() {
+        // 保存当前写的图片数据，留给家长统一批改
+        const imgs = currentCanvases.map(c => c.toDataURL());
+        savedCanvasesData.push(imgs);
+        currentIndex++;
+        loadWord();
+    }
+
+    // 进入家长统一批改模式
+    function startPigaiMode() {
+        document.getElementById('moxie-view').style.display = 'none';
+        document.getElementById('pigai-view').style.display = 'block';
+        pigaiIndex = 0;
+        showPigaiItem();
+    }
+
+    function showPigaiItem() {
+        if(pigaiIndex >= wordList.length) {
+            alert("🎉 全部批改完毕！错字已自动同步到错字仓库。");
+            localStorage.setItem('moxie_errors', JSON.stringify(errorStorage));
+            switchMode('review');
+            return;
+        }
+        const word = wordList[pigaiIndex];
+        document.getElementById('pigai-pinyin').innerText = word.pinyin;
+        document.getElementById('pigai-answer').innerText = word.hanzi;
+        
+        // 把孩子之前在Pad上写的字展示出来
+        const container = document.getElementById('pigai-canvas-display');
+        container.innerHTML = "";
+        const imgs = savedCanvasesData[pigaiIndex];
+        imgs.forEach(src => {
+            const img = document.createElement('img');
+            img.src = src;
+            img.style.border = "2px solid #cbd5e1";
+            img.style.borderRadius = "8px";
+            img.style.backgroundColor = "#fff";
+            container.appendChild(img);
+        });
+    }
+
+    function judge(isCorrect) {
+        const word = wordList[pigaiIndex];
+        if (!isCorrect) {
+            // 如果写错了，累加错误次数 
+            if(!errorStorage[word.hanzi]) {
+                errorStorage[word.hanzi] = { pinyin: word.pinyin, count: 1 };
+            } else {
+                errorStorage[word.hanzi].count += 1; // 错误次数越多，能量值越高
+            }
+        } else {
+            // 如果是在复习模式中写对了，减少错误权重系数 
+            if(isReviewMode && errorStorage[word.hanzi]) {
+                errorStorage[word.hanzi].count -= 1;
+                if(errorStorage[word.hanzi].count <= 0) {
+                    delete errorStorage[word.hanzi]; // 彻底掌握了，移出库
+                }
+            }
+        }
+        pigaiIndex++;
+        showPigaiItem();
+    }
+
+    // 渲染错字仓库列表
+    function renderErrorList() {
+        const container = document.getElementById('review-list-container');
+        container.innerHTML = "";
+        const keys = Object.keys(errorStorage);
+        if(keys.length === 0) {
+            container.innerHTML = "<p style='color:#64748b;text-align:center;'>暂无错字，你太棒了！</p>";
+            return;
+        }
+        keys.forEach(key => {
+            const item = errorStorage[key];
+            const div = document.createElement('div');
+            div.className = "review-item";
+            div.innerHTML = `
+                <div><strong>${key}</strong> <span style="color:#64748b; font-size:14px;">(${item.pinyin})</span></div>
+                <span class="badge">反复错: ${item.count} 次</span>
+            `;
+            container.appendChild(div);
+        });
+    }
+
+    // 智能复习生成算法：反复错的出现频率高，只错一次的减少出现 
+    function startReviewMode() {
+        const keys = Object.keys(errorStorage);
+        if(keys.length === 0) {
+            alert("仓库空空如也，不需要复习哦！");
+            return;
+        }
+        
+        let reviewList = [];
+        keys.forEach(key => {
+            const item = errorStorage[key];
+            // 算法核心：根据错误次数(count)，决定在本次复习中连续出现的次数
+            // 比如错了3次的字，会在复习列表里连续出现3次，强迫反复练习！ 
+            for(let i = 0; i < item.count; i++) {
+                reviewList.push({ hanzi: key, pinyin: item.pinyin });
+            }
+        });
+
+        // 随机打乱复习列表，让记忆更有效果
+        reviewList.sort(() => Math.random() - 0.5);
+        initGame(reviewList, true);
+    }
+
+    window.onload = () => {
+        initGame(originalWordList, false);
+    };
+</script>
+
+</body>
+</html>

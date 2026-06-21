@@ -3,10 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>全学年智能默写基地-诊断版</title>
+    <title>全学年智能默写基地-超级进化版</title>
     <style>
         body { font-family: Arial, sans-serif; background-color: #f0f9ff; display: flex; flex-direction: column; align-items: center; padding: 10px; margin: 0; touch-action: none; }
-        .card { background: white; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); padding: 20px; width: 95%; max-width: 800px; text-align: center; box-sizing: border-box; }
+        .card { background: white; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); padding: 20px; width: 95%; max-width: 800px; text-align: center; box-sizing: border-box; position: relative; }
+        .status-bar { display: flex; justify-content: space-between; align-items: center; background: #f0fdf4; border: 1px solid #bbf7d0; padding: 8px 15px; border-radius: 12px; margin-bottom: 12px; font-size: 15px; font-weight: bold; color: #166534; }
         .selector-zone { background: #e0f2fe; border-radius: 12px; padding: 12px; margin-bottom: 15px; display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; align-items: center; }
         select { font-size: 16px; padding: 8px; border-radius: 6px; border: 2px solid #bae6fd; background: white; }
         .nav-tabs { display: flex; justify-content: space-around; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; }
@@ -29,11 +30,22 @@
         .review-list { text-align: left; margin-top: 20px; max-height: 400px; overflow-y: auto; }
         .review-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #e2e8f0; }
         .badge { color: #ef4444; padding: 4px 12px; border-radius: 12px; font-size: 14px; font-weight: bold; }
+        
+        /* 五子棋游戏区域样式 */
+        #gobang-zone { display: none; background: #fef08a; border: 3px dashed #ca8a04; border-radius: 16px; padding: 15px; margin-top: 15px; text-align: center; }
+        .gobang-board { display: grid; grid-template-columns: repeat(11, 28px); grid-template-rows: repeat(11, 28px); gap: 1px; background: #d97706; padding: 4px; border-radius: 6px; width: 318px; margin: 10px auto; border: 2px solid #92400e; }
+        .gobang-cell { background: #fcd34d; display: flex; align-items: center; justify-content: center; font-size: 20px; cursor: pointer; border-radius: 2px; }
     </style>
 </head>
 <body>
 
     <div class="card">
+        <!-- 勋章与积分动态展示栏 -->
+        <div class="status-bar">
+            <span id="player-rank">当前段位: 🥚 词语萌蛋</span>
+            <span id="player-score">核心积分: 0 分</span>
+        </div>
+
         <div class="selector-zone">
             <select id="sel-grade" onchange="onGradeChange()"><option>暂无数据</option></select>
             <select id="sel-term" onchange="onTermChange()"><option>暂无数据</option></select>
@@ -64,6 +76,7 @@
             </div>
         </div>
 
+        <!-- 家长统一批改视窗 -->
         <div id="pigai-view" style="display: none;">
             <h3>🧐 家长统一批改时间</h3>
             <div class="pinyin" id="pigai-pinyin"></div>
@@ -71,6 +84,10 @@
             <div>
                 <button class="btn-success" onclick="judge(true)">✅ 写对了</button>
                 <button class="btn-error" onclick="judge(false)">❌ 写错了</button>
+            </div>
+            <!-- 撤销按钮放置在此处避免手滑 -->
+            <div style="margin-top: 12px;">
+                <button id="pigai-prev-btn" onclick="prevPigai()" style="background-color: #64748b; font-size: 16px; padding: 8px 20px;">🚫 撤销一步（回上一题）</button>
             </div>
             <div id="pigai-canvas-display" class="canvas-container"></div>
         </div>
@@ -86,6 +103,17 @@
             <button class="btn-success" style="width:100%; background-color:#8b5cf6;" onclick="startReviewMode('archive')">🔄 档案馆错题一键特训</button>
             <div class="review-list" id="archive-list-container"></div>
         </div>
+
+        <!-- 内置五子棋游戏小彩蛋面板 -->
+        <div id="gobang-zone">
+            <h3 style="margin:5px 0; color:#92400e;">🎉 达成卓越突破！解锁神秘棋局 ♟️</h3>
+            <p style="margin:5px 0; font-size:14px; color:#b45309;">规则: 小朋友执黑子（⚫），AI执白子（⚪），连成五子即获胜！</p>
+            <div class="gobang-board" id="gobang-board"></div>
+            <div style="margin-top: 10px;">
+                <span id="gobang-status" style="font-weight:bold; color:#78350f;">轮到你了，请落子...</span>
+                <button onclick="closeGobang()" style="font-size:14px; padding:6px 12px; background-color:#b45309; margin-left:15px;">关闭游戏</button>
+            </div>
+        </div>
     </div>
 
 <script>
@@ -94,8 +122,17 @@
     let currentModeState = 'moxie'; let currentTool = 'pen';
     let currentCanvases = []; let currentCtxs = [];
 
+    // 家长批改栈历史记录结构
+    let pigaiHistory = [];
+
+    // 状态持久化存储
     let errorStorage = JSON.parse(localStorage.getItem('moxie_errors')) || {};
     let permanentArchive = JSON.parse(localStorage.getItem('moxie_archive')) || {};
+    let currentExp = parseInt(localStorage.getItem('moxie_exp')) || 0;
+
+    // 五子棋内部引擎数据
+    let gobangBoardData = [];
+    let isGobangGameOver = false;
 
     window.onload = async () => {
         try {
@@ -109,8 +146,21 @@
         } catch (e) {
             alert("读取词库失败，具体错误原因: " + e.message);
         }
+        updateExpDisplay();
         switchMode('moxie');
     };
+
+    // 积分与进化链分发引擎
+    function updateExpDisplay() {
+        document.getElementById('player-score').innerText = `核心积分: ${currentExp} 分`;
+        let rankStr = "🥚 词语萌蛋";
+        if (currentExp > 50 && currentExp <= 200) rankStr = "🐣 破壳小雏";
+        else if (currentExp > 200 && currentExp <= 500) rankStr = "🐥 识字小鸡";
+        else if (currentExp > 500 && currentExp <= 1000) rankStr = "🦅 飞天神鹰";
+        else if (currentExp > 1000) rankStr = "🐉 错题终结巨龙";
+        document.getElementById('player-rank').innerText = `当前段位: ${rankStr}`;
+        localStorage.setItem('moxie_exp', currentExp);
+    }
 
     function initSelectors() {
         const grades = [...new Set(allWordsFlat.map(item => item.grade).filter(Boolean))];
@@ -157,7 +207,7 @@
                 initGame(mappedWords, 'moxie');
                 document.getElementById('next-btn').style.display = 'inline-block';
             } else {
-                alert(`未找到匹配数据。当前选择: ${g}-${t}-${u}。词库总条数: ${allWordsFlat.length}`);
+                alert(`未找到匹配数据。当前选择: ${g}-${t}-${u}。`);
             }
         } catch(err) {
             alert("点击加载发生内部错误: " + err.message);
@@ -250,14 +300,29 @@
     function startPigaiMode() {
         document.getElementById('moxie-view').style.display = 'none';
         document.getElementById('pigai-view').style.display = 'block';
-        pigaiIndex = 0; showPigaiItem();
+        pigaiIndex = 0; 
+        pigaiHistory = []; // 初始化清空批改历史栈
+        showPigaiItem();
     }
 
     function showPigaiItem() {
         if(pigaiIndex >= wordList.length) {
+            // 缓存原本错题库的长度，用于逻辑比对
+            const errorKeysBefore = Object.keys(errorStorage).length;
+
             alert("🎉 全部批改完毕！");
             localStorage.setItem('moxie_errors', JSON.stringify(errorStorage));
             localStorage.setItem('moxie_archive', JSON.stringify(permanentArchive));
+            
+            const errorKeysAfter = Object.keys(errorStorage).length;
+            
+            // 判定条件：触发五子棋彩蛋
+            // 条件一：当前处于“临时复习站”且原本的错题被完全消灭干净了
+            // 条件二：触发了每100个单词的累积门槛
+            if ((currentModeState === 'current_review' && errorKeysBefore > 0 && errorKeysAfter === 0) || (currentExp > 0 && currentExp % 100 === 0)) {
+                openGobangGame();
+            }
+
             switchMode(currentModeState === 'archive_review' ? 'archive' : 'review');
             return;
         }
@@ -278,6 +343,16 @@
     function judge(isCorrect) {
         const word = wordList[pigaiIndex];
         if(!word) return;
+
+        // 压入状态栈，深度拷贝副本，供撤销使用
+        pigaiHistory.push({
+            index: pigaiIndex,
+            word: JSON.parse(JSON.stringify(word)),
+            judgeResult: isCorrect,
+            hadInErrorStorage: !!errorStorage[word.hanzi],
+            hadInArchive: !!permanentArchive[word.hanzi]
+        });
+
         if (!isCorrect) {
             if(!permanentArchive[word.hanzi]) permanentArchive[word.hanzi] = { pinyin: word.pinyin, count: 1 };
             else permanentArchive[word.hanzi].count += 1;
@@ -285,12 +360,54 @@
             if(!errorStorage[word.hanzi]) errorStorage[word.hanzi] = { pinyin: word.pinyin, count: 1 };
             else errorStorage[word.hanzi].count += 1;
         } else {
+            // 正确则赚取积分加分
+            currentExp += 1;
+            updateExpDisplay();
+
             if(errorStorage[word.hanzi]) {
                 errorStorage[word.hanzi].count -= 1;
                 if(errorStorage[word.hanzi].count <= 0) delete errorStorage[word.hanzi];
             }
         }
-        pigaiIndex++; showPigaiItem();
+        pigaiIndex++; 
+        showPigaiItem();
+    }
+
+    // 撤销逻辑函数
+    function prevPigai() {
+        if (pigaiHistory.length === 0) {
+            alert("前面没有题目了，无法回退。");
+            return;
+        }
+        
+        // 弹出最后一步的操作数据
+        const lastAction = pigaiHistory.pop();
+        pigaiIndex = lastAction.index;
+        const word = lastAction.word;
+
+        // 如果上次点的是“写对了”，回退时需要把刚刚加上的积分扣减掉
+        if (lastAction.judgeResult) {
+            currentExp = Math.max(0, currentExp - 1);
+            updateExpDisplay();
+            
+            // 恢复错题库的计数器状态
+            if (lastAction.hadInErrorStorage) {
+                if (!errorStorage[word.hanzi]) errorStorage[word.hanzi] = { pinyin: word.pinyin, count: 1 };
+                else errorStorage[word.hanzi].count += 1;
+            }
+        } else {
+            // 如果上次点的是“写错了”，回退时需要把刚刚多加进数据库的脏数据剔除
+            if (permanentArchive[word.hanzi]) {
+                permanentArchive[word.hanzi].count -= 1;
+                if (permanentArchive[word.hanzi].count <= 0) delete permanentArchive[word.hanzi];
+            }
+            if (errorStorage[word.hanzi]) {
+                errorStorage[word.hanzi].count -= 1;
+                if (errorStorage[word.hanzi].count <= 0) delete errorStorage[word.hanzi];
+            }
+        }
+
+        showPigaiItem();
     }
 
     function renderErrorList() {
@@ -322,6 +439,114 @@
         let reviewList = []; keys.forEach(key => reviewList.push({ hanzi: key, pinyin: storage[key].pinyin }));
         reviewList.sort(() => Math.random() - 0.5);
         initGame(reviewList, type === 'current' ? 'current_review' : 'archive_review');
+    }
+
+    /* ==========================================================================
+       轻量级单机五子棋核心底层算法引擎（无任何外部加载项）
+       ========================================================================== */
+    function openGobangGame() {
+        document.getElementById('gobang-zone').style.display = 'block';
+        initGobangBoard();
+    }
+
+    function closeGobang() {
+        document.getElementById('gobang-zone').style.display = 'none';
+    }
+
+    function initGobangBoard() {
+        const boardElement = document.getElementById('gobang-board');
+        boardElement.innerHTML = "";
+        gobangBoardData = Array(11).fill(null).map(() => Array(11).fill(0));
+        isGobangGameOver = false;
+        document.getElementById('gobang-status').innerText = "挑战开始！请你落子(黑)...";
+
+        for (let r = 0; r < 11; r++) {
+            for (let c = 0; c < 11; c++) {
+                const cell = document.createElement('div');
+                cell.className = 'gobang-cell';
+                cell.dataset.row = r;
+                cell.dataset.col = c;
+                cell.onclick = (e) => handleGobangClick(r, c);
+                boardElement.appendChild(cell);
+            }
+        }
+    }
+
+    function handleGobangClick(r, c) {
+        if (isGobangGameOver || gobangBoardData[r][c] !== 0) return;
+
+        // 玩家落子逻辑 (黑子：1)
+        makeGobangMove(r, c, 1);
+        if (checkGobangWin(r, c, 1)) {
+            document.getElementById('gobang-status').innerText = "🎉 太棒了！你战胜了AI！";
+            isGobangGameOver = true;
+            return;
+        }
+
+        // AI 自动响应防守落子逻辑 (白子：2)
+        document.getElementById('gobang-status').innerText = "AI 正在思考中...";
+        setTimeout(() => {
+            if (isGobangGameOver) return;
+            const aiMove = findBestGobangMove();
+            if (aiMove) {
+                makeGobangMove(aiMove.r, aiMove.c, 2);
+                if (checkGobangWin(aiMove.r, aiMove.c, 2)) {
+                    document.getElementById('gobang-status').innerText = "AI 赢了，继续加油！";
+                    isGobangGameOver = true;
+                } else {
+                    document.getElementById('gobang-status').innerText = "轮到你了，请落子...";
+                }
+            }
+        }, 400);
+    }
+
+    function makeGobangMove(r, c, player) {
+        gobangBoardData[r][c] = player;
+        const cell = document.querySelector(`.gobang-cell[data-row='${r}'][data-col='${c}']`);
+        if (cell) {
+            cell.innerText = player === 1 ? "⚫" : "⚪";
+        }
+    }
+
+    // AI 轻量化扫描选择器
+    function findBestGobangMove() {
+        // 优先搜寻玩家快要连成4子的位置进行堵截
+        for (let r = 0; r < 11; r++) {
+            for (let c = 0; c < 11; c++) {
+                if (gobangBoardData[r][c] === 0) {
+                    gobangBoardData[r][c] = 1;
+                    if (checkGobangWin(r, c, 1)) { gobangBoardData[r][c] = 0; return { r, c }; }
+                    gobangBoardData[r][c] = 0;
+                }
+            }
+        }
+        // 随机搜寻空位落子
+        let emptyCells = [];
+        for (let r = 0; r < 11; r++) {
+            for (let c = 0; c < 11; c++) {
+                if (gobangBoardData[r][c] === 0) emptyCells.push({ r, c });
+            }
+        }
+        if (emptyCells.length > 0) {
+            return emptyCells[Math.floor(Math.random() * emptyCells.length)];
+        }
+        return null;
+    }
+
+    function checkGobangWin(r, c, p) {
+        const dirs = [[1,0], [0,1], [1,1], [1,-1]];
+        for (let i = 0; i < dirs.length; i++) {
+            let count = 1;
+            let d = dirs[i];
+            // 正向轴探测
+            let nr = r + d[0], nc = c + d[1];
+            while (nr >= 0 && nr < 11 && nc >= 0 && nc < 11 && gobangBoardData[nr][nc] === p) { count++; nr += d[0]; nc += d[1]; }
+            // 逆向轴探测
+            nr = r - d[0]; nc = c - d[1];
+            while (nr >= 0 && nr < 11 && nc >= 0 && nc < 11 && gobangBoardData[nr][nc] === p) { count++; nr -= d[0]; nc -= d[1]; }
+            if (count >= 5) return true;
+        }
+        return false;
     }
 </script>
 
